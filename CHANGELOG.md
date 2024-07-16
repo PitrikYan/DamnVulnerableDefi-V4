@@ -1,5 +1,34 @@
 # Changelog
 
+## v4.0.0
+
+- Full migration from Hardhat to Foundry.
+- Updated all contracts to solc 0.8.25.
+- Say goodbye to selfdestruct stuff.
+- Dependencies
+    - Upgrade all dependencies to latest versions (e.g., OpenZeppelin Contracts v5)
+    - Welcome [murky](https://github.com/dmfxyz/murky). Just in case you need to work with Merkle trees in Foundry.
+    - Also welcome [Permit2](https://github.com/Uniswap/permit2) and [Multicall](https://github.com/mds1/multicall/). Have fun with them.
+- New challenges:
+    - Withdrawal
+    - Curvy Puppet
+    - Shards
+- Major changes in challenges:
+    - All challenges now require depositing rescued funds into designated recovery accounts.
+    - Wallet Mining: new mechanics after upgrading to latest Safe contracts.
+    - The Rewarder: changed completely. Could count as new. Now it's about a token distribution based on Merkle proofs.
+    - Unstoppable: new monitor contract and pausing-related features.
+    - Naive Receiver: changed ETH for WETH. The pool now supports (flawed?) meta-transactions.
+- Minor changes in challenges: 
+    - All challenges' prompts are available in local README files.
+    - Removed boring contract-level docstrings.
+    - Removed gas optimizations that are not cool anymore.
+    - Generally using named function parameters.
+- New building blocks used in challenges
+    - `DamnValuableStaking` for bulletproof staking of DVT
+    - `DamnValuableVotes`, because the old `DamnValuableTokenSnapshot` didn't work anymore.
+- The repository now includes a devcontainer.
+
 ## v3.0.0
 
 - Two new levels: Puppet v3 and ABI Smuggling
