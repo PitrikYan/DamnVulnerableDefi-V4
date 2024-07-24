@@ -81,6 +81,7 @@ contract WalletRegistry is IProxyCreationCallback, Ownable {
             revert FakeSingletonCopy();
         }
 
+        // @AUDIT There is only checking for selector of initializer, not if there is another external call when proxy created!
         // Ensure initial calldata was a call to `Safe::setup`
         if (bytes4(initializer[:4]) != Safe.setup.selector) {
             revert InvalidInitialization();
